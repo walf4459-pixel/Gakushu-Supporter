@@ -1,10 +1,6 @@
 <!DOCTYPE html>
 <html lang="ja"><head><meta charset="utf-8">
 <!-- ▼問題データ（ここから）▼
-
-
-
-<!-- ▼問題データ（ここから）▼
  書き方：下の <script type="text/plain" data-set="問題集名" data-name="回の名前"> ～ </script> を増やし、
  中に「漢字ドリル形式（[よみ|漢字]）」か「問題 | 答え」を1行ずつ貼る。同じ data-set は同じ問題集になる。 -->
 <script type="text/plain" data-set="漢字" data-name="1">
@@ -225,6 +221,12 @@ ICTと金融を融合させた新しいサービスを何というか。|フィ�
 </script>
 
 
+
+
+
+
+
+ 
 <!-- ▲問題データ（ここまで）▲ -->
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>手書き問題演習</title>
@@ -249,27 +251,46 @@ textarea{resize:vertical}
 .big{font-size:20px;white-space:pre-wrap}
 .hl{font-weight:700;color:var(--ac);text-decoration:underline;text-underline-offset:5px;padding:0 2px}
 select{font:inherit;width:100%;padding:10px;margin:8px 0;border-radius:10px;border:1px solid var(--bd);background:var(--bg);color:var(--tx)}
-.cv{width:100%;height:280px;display:block;border:1px dashed var(--mu);border-radius:12px;background:var(--card);touch-action:none}
+.cv{width:100%;height:280px;display:block;border:1px dashed var(--mu);border-radius:12px;background:var(--card);touch-action:none;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent}
+body.study,body.study *{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+button{touch-action:manipulation}
 .item{display:flex;gap:8px;align-items:center;justify-content:space-between;padding:8px 0;border-top:1px solid var(--bd)}
 .item:first-child{border-top:0}.item>div{min-width:0;white-space:pre-wrap;word-break:break-word}
 .bar{height:6px;background:var(--bd);border-radius:3px;margin-bottom:12px}.bar>i{display:block;height:100%;background:var(--ac);border-radius:3px}
 </style></head><body><div id="app"></div>
 <script>
 const app=document.getElementById('app');
+const VERSION='1.8.0';
+const NOTES=[
+ {v:'1.8.0',d:'2026-10-15',t:['問題ごとに「出題する／しない」をチェックで選べるように（編集画面の問題一覧）','出題しない問題は、出題・理解度の円グラフ・範囲ボタンの数字から除外']},
+ {v:'1.7.0',d:'2026-10-15',t:['バージョン表示と更新履歴を追加']},
+ {v:'1.6.1',t:['復習で答えた結果も成績（○×・理解度）に反映するように変更']},
+ {v:'1.6.0',t:['iPadのペン入力を改善（反応の遅れ、文字の選択、手のひらの誤入力）','1回の問題数（10／20／50／100／全部／自由入力）を選べるように','×にした問題が2〜4問あとに再出題されるように']},
+ {v:'1.5.0',t:['回ごと・10問（10文）ごとの範囲を選んで出題','問題データをHTML先頭に内包（script type="text/plain"）','半角・全角スペースも区切りとして使えるように']},
+ {v:'1.4.0',t:['漢字ドリル形式［よみ|漢字］の取り込み（書き取り・読み・1文まとめ）']},
+ {v:'1.3.0',t:['Excel／CSVから問題を追加','バックアップ機能を廃止']},
+ {v:'1.2.0',t:['問題の追加・編集画面を演習画面から分離']},
+ {v:'1.1.0',t:['理解度の円グラフ（未学習0%・苦手10%・学習中40%・理解済み100%の平均）']},
+ {v:'1.0.0',t:['最初のバージョン：手書きで答えて自己採点（○×）、問題集、苦手優先の出題']}
+];
+function verView(){
+ return h('div',{},h('button',{class:'btn sm',on:{click:()=>go({t:'home'})}},'← 戻る'),h('h1',{},'更新履歴'),h('div',{class:'mu',style:'margin-bottom:12px'},`現在のバージョン v${VERSION}`),
+  NOTES.map(n=>h('div',{class:'card'},h('h2',{},`v${n.v}`+(n.d?`（${n.d}）`:'')),h('ul',{style:'margin:0;padding-left:20px'},n.t.map(x=>h('li',{},x))))))
+}
 let D={sets:[]};
 try{const r=localStorage.getItem('hq');if(r)D=JSON.parse(r)}catch(e){}
 const save=()=>{try{localStorage.setItem('hq',JSON.stringify(D))}catch(e){}};
 const uid=()=>Math.random().toString(36).slice(2,9);
 function h(t,a,...k){const e=document.createElement(t);for(const x in a||{}){if(x==='on')for(const v in a.on)e.addEventListener(v,a.on[v]);else e[x==='class'?'className':x]=a[x]}k.flat().forEach(c=>e.append(c));return e}
-let V={t:'home'},S=null;
+let V={t:'home'},S=null,PEN=false;
 const go=v=>{V=v;render();scrollTo(0,0)};
-function render(){app.replaceChildren(({home,set:setView,edit:editView,study,done})[V.t]())}
+function render(){document.body.classList.toggle('study',V.t==='study');app.replaceChildren(({home,set:setView,edit:editView,study,done,ver:verView})[V.t]())}
 const cur=()=>D.sets.find(s=>s.id===V.id);
-const weak=s=>s.qs.filter(q=>q.box<2);
+const weak=s=>s.qs.filter(q=>q.box<2&&!q.off);
 function twice(label,fn,cls){const b=h('button',{class:'btn sm '+(cls||''),on:{click(){if(b.dataset.a){fn()}else{b.dataset.a=1;b.textContent='もう一度押すと実行'}}}},label);return b}
 const LV=[{n:'未学習',w:0,c:'#9b9a94',f:q=>q.box===0&&!q.r&&!q.w},{n:'苦手',w:.1,c:'#d64545',f:q=>q.box===0&&(q.r||q.w)>0},{n:'学習中',w:.4,c:'#e0a526',f:q=>q.box>=1&&q.box<=2},{n:'理解済み',w:1,c:'#1f9d55',f:q=>q.box>=3}];
 function pie(s){
- const N=s.qs.length,cnt=LV.map(l=>s.qs.filter(l.f).length),ns='http://www.w3.org/2000/svg';
+ const Q=s.qs.filter(q=>!q.off),N=Q.length,cnt=LV.map(l=>Q.filter(l.f).length),ns='http://www.w3.org/2000/svg';
  const mk=(t,a)=>{const e=document.createElementNS(ns,t);for(const k in a)e.setAttribute(k,a[k]);return e};
  const svg=mk('svg',{viewBox:'-60 -60 120 120'});svg.style.cssText='width:140px;flex:none';
  const R=40,C=2*Math.PI*R,g=mk('g',{transform:'rotate(-90)'});let off=0;
@@ -283,8 +304,9 @@ function pie(s){
 function home(){
  const inp=h('input',{placeholder:'新しい問題集の名前（例：基本情報 午前）'});
  return h('div',{},h('h1',{},'✍️ 手書き問題演習'),
-  D.sets.length?D.sets.map(s=>h('div',{class:'card',on:{click:()=>go({t:'set',id:s.id})},style:'cursor:pointer'},h('h2',{},s.name),h('div',{class:'mu'},`${s.qs.length}問 ／ 苦手・未学習 ${weak(s).length}問`))):h('p',{class:'mu'},'まず問題集を作りましょう。'),
-  h('div',{class:'card'},inp,h('div',{class:'row'},h('button',{class:'btn pri',on:{click(){const n=inp.value.trim();if(!n)return;D.sets.push({id:uid(),name:n,qs:[]});save();render()}}},'問題集を作る'))))
+  D.sets.length?D.sets.map(s=>h('div',{class:'card',on:{click:()=>go({t:'set',id:s.id})},style:'cursor:pointer'},h('h2',{},s.name),h('div',{class:'mu'},`${s.qs.filter(q=>!q.off).length}問 ／ 苦手・未学習 ${weak(s).length}問`))):h('p',{class:'mu'},'まず問題集を作りましょう。'),
+  h('div',{class:'card'},inp,h('div',{class:'row'},h('button',{class:'btn pri',on:{click(){const n=inp.value.trim();if(!n)return;D.sets.push({id:uid(),name:n,qs:[]});save();render()}}},'問題集を作る'))),
+  h('div',{style:'text-align:center;margin-top:16px'},h('button',{class:'btn sm',on:{click:()=>go({t:'ver'})}},`v${VERSION}・更新履歴`)))
 }
 function score(qs){return qs.length?Math.round(qs.reduce((a,q)=>a+LV.find(l=>l.f(q)).w,0)/qs.length*100):0}
 function ranges(s){
@@ -294,14 +316,18 @@ function ranges(s){
   a.forEach(x=>{const k=Math.floor(x.u/10);if(!b.has(k))b.set(k,[]);b.get(k).push(x.q)});
   return{g,cards:a.map(x=>x.q),blocks:[...b].sort((x,y)=>x[0]-y[0]).map(([k,c])=>({label:`${k*10+1}–${Math.min(k*10+10,mx+1)}${un}`,cards:c}))}})}
 function setView(){
- const s=cur();if(!s)return home();
- const run=c=>{const p=c.slice();if(!p.length)return;for(let i=p.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[p[i],p[j]]=[p[j],p[i]]}S={id:s.id,queue:p,i:0,ok:0,ng:0};go({t:'study'})};
+ const s0=cur();if(!s0)return home();const s={...s0,qs:s0.qs.filter(q=>!q.off)},nOff=s0.qs.length-s.qs.length;
+ const run=c=>startSession(s,c);
+ const NS=[10,20,50,100,0];
+ const nrow=h('div',{class:'card'},h('div',{class:'lb'},'1回の問題数（間違えた問題は数問後にもう一度出ます。その回数も含みます）'),h('div',{class:'row'},NS.map(n=>h('button',{class:'btn sm'+((D.n||0)===n?' pri':''),on:{click(){D.n=n;save();render()}}},n?n+'問':'全部')),h('input',{type:'number',min:1,placeholder:'その他',value:NS.includes(D.n||0)?'':D.n,style:'flex:1;min-width:90px',on:{change(e){const v=parseInt(e.target.value);D.n=v>0?v:0;save();render()}}})));
  const R=ranges(s),many=R.length>1||(R[0]&&R[0].blocks.length>1);
  const bb=b=>h('button',{class:'btn sm',on:{click:()=>run(b.cards)}},`${b.label} · ${score(b.cards)}%`);
  const box=r=>{const bl=r.blocks.length>1?h('div',{class:'row'},r.blocks.map(bb)):'';
-  return r.g?h('details',{class:'item',style:'display:block'},h('summary',{style:'cursor:pointer'},`${r.g}　${r.cards.length}問・理解度 ${score(r.cards)}%`),h('div',{class:'row'},h('button',{class:'btn sm',on:{click:()=>run(r.cards)}},'この回を全部出題')),bl):bl};
+  return r.g?h('details',{class:'item',style:'display:block'},h('summary',{style:'cursor:pointer'},`${r.g}　${r.cards.length}問・理解度 ${score(r.cards)}%`),h('div',{class:'row'},h('button',{class:'btn sm',on:{click:()=>run(r.cards)}},'この回を出題')),bl):bl};
  return h('div',{},h('button',{class:'btn sm',on:{click:()=>go({t:'home'})}},'← 戻る'),h('h1',{},s.name),
-  s.qs.length?h('div',{class:'row'},h('button',{class:'btn pri',on:{click:()=>run(s.qs)}},`全問スタート（${s.qs.length}）`),h('button',{class:'btn',on:{click:()=>run(weak(s))}},`苦手・未学習（${weak(s).length}）`)):h('p',{class:'mu'},'まだ問題がありません。下のボタンから追加してください。'),
+  nOff?h('div',{class:'mu',style:'margin-bottom:8px'},`※ ${nOff}問は「出題しない」設定です（編集画面の問題一覧で変更）`):'',
+  s.qs.length?nrow:'',
+  s.qs.length?h('div',{class:'row'},h('button',{class:'btn pri',on:{click:()=>run(s.qs)}},`スタート（全${s.qs.length}問から）`),h('button',{class:'btn',on:{click:()=>run(weak(s))}},`苦手・未学習（${weak(s).length}）`)):h('p',{class:'mu'},nOff?'出題する問題がありません。編集画面の問題一覧でチェックを入れてください。':'まだ問題がありません。下のボタンから追加してください。'),
   pie(s),
   many?h('div',{class:'card'},h('h2',{},'範囲を選んで出題'),h('div',{class:'lb'},'ボタンの数字はその範囲の理解度です。10問（10文）ずつに区切っています。'),R.map(box)):'',
   h('div',{class:'row'},h('button',{class:'btn',on:{click:()=>go({t:'edit',id:s.id})}},s.file?'📋 問題一覧・書き出し':'✏️ 問題を追加・編集')))
@@ -387,39 +413,64 @@ function editView(){
   ro?h('div',{class:'card mu'},'このデータはHTMLに内包されたテキストから読み込まれています。内容を変えるときはHTML内のデータ部分を書き換えてください（成績はこの端末に保存されます）。'):[drillCard(s),sheetCard(s)],
   ro?'':h('div',{class:'card'},h('h2',{},'問題を追加'),q,h('div',{style:'height:8px'}),a,h('div',{class:'row'},h('button',{class:'btn',on:{click:add}},'追加')),
    h('div',{class:'lb'},'まとめて追加'),bulk,h('div',{class:'row'},h('button',{class:'btn',on:{click:addBulk}},'まとめて追加'))),
-  h('div',{class:'card'},h('h2',{},`問題一覧（${s.qs.length}）`),s.qs.map(x=>h('div',{class:'item'},h('div',{},plain(x.q),h('div',{class:'mu'},`→ ${x.a}　○${x.r} ×${x.w}`)),ro?'':h('button',{class:'btn sm',on:{click(){s.qs=s.qs.filter(z=>z!==x);save();render()}}},'削除')))),
+  h('div',{class:'card'},h('h2',{},`問題一覧（${s.qs.length}）`),h('div',{class:'lb'},'チェックを入れた問題だけが出題されます。'),h('div',{class:'row'},h('button',{class:'btn sm',on:{click(){s.qs.forEach(q=>{q.off=false});save();render()}}},'すべて出題する'),h('button',{class:'btn sm',on:{click(){s.qs.forEach(q=>{q.off=true});save();render()}}},'すべて外す')),s.qs.map(x=>h('div',{class:'item'},h('input',{type:'checkbox',checked:!x.off,title:'出題する',style:'width:22px;height:22px;flex:none',on:{change(e){x.off=!e.target.checked;save()}}}),h('div',{style:'flex:1'},plain(x.q),h('div',{class:'mu'},`→ ${x.a}　○${x.r} ×${x.w}`)),ro?'':h('button',{class:'btn sm',on:{click(){s.qs=s.qs.filter(z=>z!==x);save();render()}}},'削除')))),
   exportCard(s),
   ro?'':h('div',{class:'row'},twice('この問題集を削除',()=>{D.sets=D.sets.filter(z=>z!==s);save();go({t:'home'})},'ng')))
 }
-function canvasInit(cv){
- const r=cv.getBoundingClientRect(),d=window.devicePixelRatio||1;cv.width=r.width*d;cv.height=r.height*d;
- const c=cv.getContext('2d');c.scale(d,d);c.lineCap='round';c.lineJoin='round';return c}
+function canvasInit(cv){const r=cv.getBoundingClientRect(),d=window.devicePixelRatio||1;cv.width=Math.max(1,r.width*d);cv.height=Math.max(1,r.height*d);const c=cv.getContext('2d');c.scale(d,d);c.lineCap='round';c.lineJoin='round';return c}
+function startSession(s,cards){
+ let p=cards.slice();if(!p.length)return false;
+ for(let i=p.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[p[i],p[j]]=[p[j],p[i]]}
+ const N=D.n>0?D.n:Infinity;if(p.length>N)p=p.sort((a,b)=>a.box-b.box).slice(0,N);
+ S={id:s.id,pool:p,i:0,N,ok:0,ng:0,seen:new Set(),retry:[],cur:null};advance();go({t:'study'});return true}
+function advance(){
+ if(S.i>=S.N)return false;
+ const by=[...S.retry].sort((a,b)=>a.due-b.due);let r=by.find(x=>x.due<=S.i);
+ if(!r&&by.length&&(S.N-S.i<=by.length||!S.pool.length))r=by[0];
+ if(r){S.cur=r.q;return true}
+ if(S.pool.length){S.cur=S.pool.shift();return true}
+ return false}
+function answer(ok){
+ const q=S.cur,first=!S.seen.has(q.id);S.seen.add(q.id);
+ if(ok){q.r++;q.box=Math.min(q.box+1,5)}else{q.w++;q.box=0}if(first){ok?S.ok++:S.ng++}save()
+ S.retry=S.retry.filter(x=>x.q!==q);S.i++;
+ if(!ok)S.retry.push({q,due:S.i+2+Math.floor(Math.random()*3)});
+ return advance()}
 function study(){
- const s=D.sets.find(z=>z.id===S.id),q=S.queue[S.i];
- const cv=h('canvas',{class:'cv'});let c,stack=[],on=false,er=false;
+ const s=D.sets.find(z=>z.id===S.id),q=S.cur;
+ const cv=h('canvas',{class:'cv'});let c,er=false,cur=null;const strokes=[];
+ const wipe=()=>{c.save();c.setTransform(1,0,0,1,0,0);c.clearRect(0,0,cv.width,cv.height);c.restore()};
+ const seg=(st,a,b)=>{c.globalCompositeOperation=st.er?'destination-out':'source-over';c.strokeStyle=st.col;c.lineWidth=st.er?24:3.2;c.beginPath();c.moveTo(a[0],a[1]);c.lineTo(b[0],b[1]);c.stroke()};
+ const redraw=()=>{wipe();strokes.forEach(st=>{if(st.clear){wipe();return}const p=st.pts;if(p.length===1)seg(st,p[0],[p[0][0]+.01,p[0][1]]);for(let i=1;i<p.length;i++)seg(st,p[i-1],p[i])})};
  const pos=e=>{const r=cv.getBoundingClientRect();return[e.clientX-r.left,e.clientY-r.top]};
- cv.addEventListener('pointerdown',e=>{if(!c)return;e.preventDefault();cv.setPointerCapture(e.pointerId);stack.push(c.getImageData(0,0,cv.width,cv.height));if(stack.length>30)stack.shift();on=true;const[x,y]=pos(e);c.globalCompositeOperation=er?'destination-out':'source-over';c.strokeStyle=getComputedStyle(document.body).color;c.lineWidth=er?24:3;c.beginPath();c.moveTo(x,y);c.lineTo(x+.01,y);c.stroke()});
- cv.addEventListener('pointermove',e=>{if(!on)return;e.preventDefault();const[x,y]=pos(e);c.lineTo(x,y);c.stroke();c.beginPath();c.moveTo(x,y)});
- ['pointerup','pointercancel'].forEach(v=>cv.addEventListener(v,()=>{on=false}));
- const clr=()=>{stack.push(c.getImageData(0,0,cv.width,cv.height));c.save();c.setTransform(1,0,0,1,0,0);c.clearRect(0,0,cv.width,cv.height);c.restore()};
- const undo=()=>{const im=stack.pop();if(im)c.putImageData(im,0,0)};
+ cv.addEventListener('pointerdown',e=>{
+  if(!c)return;if(e.pointerType==='pen')PEN=true;if(e.pointerType==='touch'&&PEN)return;
+  e.preventDefault();try{cv.setPointerCapture(e.pointerId)}catch(_){}
+  cur={er,col:getComputedStyle(document.body).color,pts:[pos(e)],id:e.pointerId};strokes.push(cur);seg(cur,cur.pts[0],[cur.pts[0][0]+.01,cur.pts[0][1]])});
+ cv.addEventListener('pointermove',e=>{if(!cur||e.pointerId!==cur.id)return;e.preventDefault();
+  const ev=e.getCoalescedEvents?e.getCoalescedEvents():[];(ev.length?ev:[e]).forEach(x=>{const p=pos(x),l=cur.pts[cur.pts.length-1];cur.pts.push(p);seg(cur,l,p)})});
+ const up=e=>{if(cur&&e.pointerId===cur.id)cur=null};['pointerup','pointercancel'].forEach(v=>cv.addEventListener(v,up));
+ ['touchstart','touchmove'].forEach(v=>cv.addEventListener(v,e=>e.preventDefault(),{passive:false}));
+ ['contextmenu','selectstart','gesturestart'].forEach(v=>cv.addEventListener(v,e=>e.preventDefault()));
+ const undo=()=>{strokes.pop();redraw()},clr=()=>{strokes.push({clear:true});redraw()};
  const erb=h('button',{class:'btn sm',on:{click(){er=!er;erb.textContent=er?'✏️ ペンに戻す':'🩹 消しゴム'}}},'🩹 消しゴム');
  const ans=h('div',{class:'card',hidden:true},h('div',{class:'lb'},'答え'),h('div',{class:'big'},q.a));
- const fin=ok=>{if(ok){q.r++;q.box=Math.min(q.box+1,5);S.ok++}else{q.w++;q.box=0;S.ng++}save();S.i++;go({t:S.i>=S.queue.length?'done':'study'})};
+ const fin=ok=>go({t:answer(ok)?'study':'done'});
  const judge=h('div',{class:'row',hidden:true},h('button',{class:'btn ng',on:{click:()=>fin(false)}},'× 間違い'),h('button',{class:'btn ok',on:{click:()=>fin(true)}},'○ 正解'));
  const show=h('button',{class:'btn pri',style:'width:100%',on:{click(){ans.hidden=false;judge.hidden=false;show.hidden=true}}},'答えを見る');
- requestAnimationFrame(()=>{c=canvasInit(cv)});
- return h('div',{},h('div',{class:'row'},h('button',{class:'btn sm',on:{click:()=>go({t:'set',id:S.id})}},'← やめる'),h('div',{class:'mu',style:'text-align:right'},`${S.i+1} / ${S.queue.length}`)),
-  h('div',{class:'bar'},h('i',{style:`width:${S.i/S.queue.length*100}%`})),
+ const init=()=>{c=canvasInit(cv);redraw()};
+ if(window.ResizeObserver)new ResizeObserver(init).observe(cv);else requestAnimationFrame(init);
+ const left=S.pool.length+S.retry.length+(S.retry.some(x=>x.q===q)?0:1),tot=Math.min(S.N,S.i+left),isR=S.seen.has(q.id);
+ return h('div',{},h('div',{class:'row'},h('button',{class:'btn sm',on:{click:()=>go({t:'set',id:S.id})}},'← やめる'),h('div',{class:'mu',style:'text-align:right'},`${S.i+1} / ${tot}${isR?'（復習）':''}`)),
+  h('div',{class:'bar'},h('i',{style:`width:${S.i/tot*100}%`})),
   h('div',{class:'card'},h('div',{class:'lb'},s.name),h('div',{class:'big'},fmt(q.q))),
   cv,h('div',{class:'row'},h('button',{class:'btn sm',on:{click:undo}},'↩ 元に戻す'),erb,h('button',{class:'btn sm',on:{click:clr}},'全消し')),
   show,ans,judge)
 }
 function done(){
  const s=D.sets.find(z=>z.id===S.id),n=S.ok+S.ng;
- const again=h('button',{class:'btn pri',on:{click(){const p=weak(s);if(!p.length)return go({t:'set',id:s.id});S={id:s.id,queue:p,i:0,ok:0,ng:0};go({t:'study'})}}},'苦手だけもう一度');
- return h('div',{},h('h1',{},'おつかれさま 🎉'),h('div',{class:'card'},h('div',{class:'big'},`${S.ok} / ${n} 問 正解`),h('div',{class:'mu'},`正答率 ${n?Math.round(S.ok/n*100):0}%`)),
-  pie(s),
+ const again=h('button',{class:'btn pri',on:{click(){const p=weak(s);if(!p.length)return go({t:'set',id:s.id});startSession(s,p)}}},'苦手だけもう一度');
+ return h('div',{},h('h1',{},'おつかれさま 🎉'),h('div',{class:'card'},h('div',{class:'big'},`${S.ok} / ${n} 問 正解`),h('div',{class:'mu'},`正答率 ${n?Math.round(S.ok/n*100):0}%・出題 ${S.i}回（復習を含む）`)),pie(s),
   h('div',{class:'row'},again,h('button',{class:'btn',on:{click:()=>go({t:'set',id:s.id})}},'問題集に戻る')))
 }
 loadBundled();render();
