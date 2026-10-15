@@ -223,10 +223,6 @@ ICTと金融を融合させた新しいサービスを何というか。|フィ�
 
 
 
-
-
-
- 
 <!-- ▲問題データ（ここまで）▲ -->
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>手書き問題演習</title>
@@ -260,8 +256,9 @@ button{touch-action:manipulation}
 </style></head><body><div id="app"></div>
 <script>
 const app=document.getElementById('app');
-const VERSION='1.8.0';
+const VERSION='1.9.0';
 const NOTES=[
+ {v:'1.9.0',d:'2026-10-15',t:['「やめる」で、そこまでの出題状況を保存。問題集の画面から「前回の続きから」で再開（1問答えるごとにも自動保存）','成績の書き出し／読み込み（トップ画面の下）','更新履歴の画面に「最新版に更新」ボタンを追加','復習の時期を、出題した問題数で判断するように：「学習中」以上の問題は、他の問題を一定数（10／30／60／120／240問）解くと「復習の時期」になり、理解度の集計では学習中に戻ります','「苦手・未学習」を「要復習」に変更（復習の時期の問題も含む）']},
  {v:'1.8.0',d:'2026-10-15',t:['問題ごとに「出題する／しない」をチェックで選べるように（編集画面の問題一覧）','出題しない問題は、出題・理解度の円グラフ・範囲ボタンの数字から除外']},
  {v:'1.7.0',d:'2026-10-15',t:['バージョン表示と更新履歴を追加']},
  {v:'1.6.1',t:['復習で答えた結果も成績（○×・理解度）に反映するように変更']},
@@ -273,24 +270,51 @@ const NOTES=[
  {v:'1.1.0',t:['理解度の円グラフ（未学習0%・苦手10%・学習中40%・理解済み100%の平均）']},
  {v:'1.0.0',t:['最初のバージョン：手書きで答えて自己採点（○×）、問題集、苦手優先の出題']}
 ];
+function saveSess(){try{if(!S)return;D.sess=D.sess||{};D.sess[S.id]={pool:S.pool.map(q=>q.id),retry:S.retry.map(x=>[x.q.id,x.due]),cur:S.cur&&S.cur.id,seen:[...S.seen],i:S.i,N:S.N===Infinity?0:S.N,ok:S.ok,ng:S.ng};save()}catch(e){}}
+function resumeSession(s){
+ const sn=(D.sess||{})[s.id];if(!sn)return false;
+ const m={};s.qs.forEach(q=>{m[q.id]=q});
+ S={id:s.id,pool:sn.pool.map(id=>m[id]).filter(q=>q&&!q.off),i:sn.i,N:sn.N>0?sn.N:Infinity,ok:sn.ok,ng:sn.ng,seen:new Set(sn.seen),retry:sn.retry.map(([id,due])=>({q:m[id],due})).filter(x=>x.q&&!x.q.off),cur:m[sn.cur]||null};
+ if(!S.cur||S.cur.off){if(!advance()){delete D.sess[s.id];save();return false}}
+ go({t:'study'});return true}
+function backupView(){
+ const out=h('textarea',{rows:5,readOnly:true,placeholder:'「書き出してコピー」を押すと、ここに成績のテキストが出ます'}),inp=h('textarea',{rows:5,placeholder:'書き出したテキストを、ここに貼り付けます'}),msg=h('div',{class:'mu',style:'margin-top:8px'});
+ const exp=()=>JSON.stringify({v:1,tick:D.tick||0,n:D.n||0,sets:D.sets.map(s=>({id:s.id,name:s.name,file:!!s.file,qs:s.qs.map(q=>[q.q,q.a,q.box,q.r,q.w,q.at==null?null:q.at,q.off?1:0])}))});
+ const imp=()=>{try{const j=JSON.parse(inp.value.trim());let n=0;
+  (j.sets||[]).forEach(is=>{let s=D.sets.find(x=>x.id===is.id);
+   if(!s){if(is.file)return;s={id:is.id,name:is.name,qs:[]};D.sets.push(s)}
+   const idx={};s.qs.forEach(q=>{idx[q.q+'\u0001'+q.a]=q});
+   is.qs.forEach(r=>{let q=idx[r[0]+'\u0001'+r[1]];if(!q){if(s.file)return;q={id:uid(),q:r[0],a:r[1]};s.qs.push(q)}
+    Object.assign(q,{box:r[2]||0,r:r[3]||0,w:r[4]||0,off:!!r[6]});if(r[5]!=null)q.at=r[5];n++})});
+  D.tick=Math.max(D.tick||0,j.tick||0);if(j.n!=null)D.n=j.n;save();msg.textContent=`${n}問分の成績を読み込みました。`}catch(e){msg.textContent='読み込めませんでした。書き出したテキスト全体を貼り付けたか、確認してください。'}};
+ return h('div',{},h('button',{class:'btn sm',on:{click:()=>go({t:'home'})}},'← 戻る'),h('h1',{},'成績の書き出し／読み込み'),
+  h('div',{class:'card'},h('h2',{},'書き出す'),h('div',{class:'lb'},'成績・出題するチェック・自分で作った問題集をテキストにします。メモなどに貼って保管してください。'),h('div',{class:'row'},h('button',{class:'btn',on:{click(){out.value=exp();out.select();try{navigator.clipboard.writeText(out.value);msg.textContent='コピーしました。'}catch(e){msg.textContent='テキストを長押ししてコピーしてください。'}}}},'書き出してコピー')),out),
+  h('div',{class:'card'},h('h2',{},'読み込む'),h('div',{class:'lb'},'同じ問題の成績は上書きされます。HTMLに入れた問題集は、成績だけが戻ります。'),inp,h('div',{class:'row'},h('button',{class:'btn pri',on:{click:imp}},'読み込む'))),msg)
+}
 function verView(){
- return h('div',{},h('button',{class:'btn sm',on:{click:()=>go({t:'home'})}},'← 戻る'),h('h1',{},'更新履歴'),h('div',{class:'mu',style:'margin-bottom:12px'},`現在のバージョン v${VERSION}`),
+ const msg=h('div',{class:'mu',style:'margin:8px 0'});
+ const upd=h('button',{class:'btn',on:{async click(){msg.textContent='確認中…';try{const t=await (await fetch(location.href.split('#')[0],{cache:'reload'})).text();const m=t.match(/const VERSION='([^']+)'/);if(m&&m[1]!==VERSION){msg.textContent=`v${m[1]} に更新します…`;setTimeout(()=>location.reload(),600)}else msg.textContent=`最新です（v${VERSION}）`}catch(e){msg.textContent='確認できませんでした。ネット接続を確認してください。'}}}},'🔄 最新版に更新');
+ return h('div',{},h('button',{class:'btn sm',on:{click:()=>go({t:'home'})}},'← 戻る'),h('h1',{},'更新履歴'),h('div',{class:'mu'},`現在のバージョン v${VERSION}`),upd,msg,h('div',{style:'height:12px'}),
   NOTES.map(n=>h('div',{class:'card'},h('h2',{},`v${n.v}`+(n.d?`（${n.d}）`:'')),h('ul',{style:'margin:0;padding-left:20px'},n.t.map(x=>h('li',{},x))))))
 }
 let D={sets:[]};
 try{const r=localStorage.getItem('hq');if(r)D=JSON.parse(r)}catch(e){}
+D.tick=D.tick||0;D.sets=D.sets||[];
 const save=()=>{try{localStorage.setItem('hq',JSON.stringify(D))}catch(e){}};
 const uid=()=>Math.random().toString(36).slice(2,9);
 function h(t,a,...k){const e=document.createElement(t);for(const x in a||{}){if(x==='on')for(const v in a.on)e.addEventListener(v,a.on[v]);else e[x==='class'?'className':x]=a[x]}k.flat().forEach(c=>e.append(c));return e}
 let V={t:'home'},S=null,PEN=false;
 const go=v=>{V=v;render();scrollTo(0,0)};
-function render(){document.body.classList.toggle('study',V.t==='study');app.replaceChildren(({home,set:setView,edit:editView,study,done,ver:verView})[V.t]())}
+function render(){document.body.classList.toggle('study',V.t==='study');app.replaceChildren(({home,set:setView,edit:editView,study,done,ver:verView,bk:backupView})[V.t]())}
 const cur=()=>D.sets.find(s=>s.id===V.id);
-const weak=s=>s.qs.filter(q=>q.box<2&&!q.off);
+const GAP={1:10,2:30,3:60,4:120,5:240};
+const overdue=q=>q.box>=1&&q.at!=null&&(D.tick||0)-q.at>=GAP[q.box];
+const eb=q=>q.box>=3&&overdue(q)?2:q.box;
+const weak=s=>s.qs.filter(q=>!q.off&&(eb(q)<2||overdue(q)));
 function twice(label,fn,cls){const b=h('button',{class:'btn sm '+(cls||''),on:{click(){if(b.dataset.a){fn()}else{b.dataset.a=1;b.textContent='もう一度押すと実行'}}}},label);return b}
-const LV=[{n:'未学習',w:0,c:'#9b9a94',f:q=>q.box===0&&!q.r&&!q.w},{n:'苦手',w:.1,c:'#d64545',f:q=>q.box===0&&(q.r||q.w)>0},{n:'学習中',w:.4,c:'#e0a526',f:q=>q.box>=1&&q.box<=2},{n:'理解済み',w:1,c:'#1f9d55',f:q=>q.box>=3}];
+const LV=[{n:'未学習',w:0,c:'#9b9a94',f:q=>eb(q)===0&&!q.r&&!q.w},{n:'苦手',w:.1,c:'#d64545',f:q=>eb(q)===0&&(q.r||q.w)>0},{n:'学習中',w:.4,c:'#e0a526',f:q=>eb(q)>=1&&eb(q)<=2},{n:'理解済み',w:1,c:'#1f9d55',f:q=>eb(q)>=3}];
 function pie(s){
- const Q=s.qs.filter(q=>!q.off),N=Q.length,cnt=LV.map(l=>Q.filter(l.f).length),ns='http://www.w3.org/2000/svg';
+ const Q=s.qs.filter(q=>!q.off),N=Q.length,cnt=LV.map(l=>Q.filter(l.f).length),od=Q.filter(overdue).length,ns='http://www.w3.org/2000/svg';
  const mk=(t,a)=>{const e=document.createElementNS(ns,t);for(const k in a)e.setAttribute(k,a[k]);return e};
  const svg=mk('svg',{viewBox:'-60 -60 120 120'});svg.style.cssText='width:140px;flex:none';
  const R=40,C=2*Math.PI*R,g=mk('g',{transform:'rotate(-90)'});let off=0;
@@ -299,14 +323,14 @@ function pie(s){
  svg.append(g);
  const t=mk('text',{'text-anchor':'middle',y:6,'font-size':18,'font-weight':700,fill:'var(--tx)'});t.textContent=N?Math.round(cnt.reduce((a,n,i)=>a+n*LV[i].w,0)/N*100)+'%':'–';svg.append(t);
  return h('div',{class:'card',style:'display:flex;gap:14px;align-items:center'},svg,
-  h('div',{style:'flex:1'},h('h2',{},'理解度'),LV.map((l,i)=>h('div',{class:'mu'},h('span',{style:`display:inline-block;width:10px;height:10px;border-radius:50%;background:${l.c};margin-right:6px`}),`${l.n} ${cnt[i]}問（${l.w*100}%）`)),h('div',{class:'lb'},'中央＝理解度スコア（各状態の（　）内の点を平均）')))
+  h('div',{style:'flex:1'},h('h2',{},'理解度'),od?h('div',{class:'lb'},`復習の時期：${od}問（学習中に戻っています）`):'',LV.map((l,i)=>h('div',{class:'mu'},h('span',{style:`display:inline-block;width:10px;height:10px;border-radius:50%;background:${l.c};margin-right:6px`}),`${l.n} ${cnt[i]}問（${l.w*100}%）`)),h('div',{class:'lb'},'中央＝理解度スコア（各状態の（　）内の点を平均）')))
 }
 function home(){
  const inp=h('input',{placeholder:'新しい問題集の名前（例：基本情報 午前）'});
  return h('div',{},h('h1',{},'✍️ 手書き問題演習'),
-  D.sets.length?D.sets.map(s=>h('div',{class:'card',on:{click:()=>go({t:'set',id:s.id})},style:'cursor:pointer'},h('h2',{},s.name),h('div',{class:'mu'},`${s.qs.filter(q=>!q.off).length}問 ／ 苦手・未学習 ${weak(s).length}問`))):h('p',{class:'mu'},'まず問題集を作りましょう。'),
+  D.sets.length?D.sets.map(s=>h('div',{class:'card',on:{click:()=>go({t:'set',id:s.id})},style:'cursor:pointer'},h('h2',{},s.name),h('div',{class:'mu'},`${s.qs.filter(q=>!q.off).length}問 ／ 要復習 ${weak(s).length}問`))):h('p',{class:'mu'},'まず問題集を作りましょう。'),
   h('div',{class:'card'},inp,h('div',{class:'row'},h('button',{class:'btn pri',on:{click(){const n=inp.value.trim();if(!n)return;D.sets.push({id:uid(),name:n,qs:[]});save();render()}}},'問題集を作る'))),
-  h('div',{style:'text-align:center;margin-top:16px'},h('button',{class:'btn sm',on:{click:()=>go({t:'ver'})}},`v${VERSION}・更新履歴`)))
+  h('div',{class:'row',style:'justify-content:center;margin-top:16px'},h('button',{class:'btn sm',on:{click:()=>go({t:'bk'})}},'💾 成績の書き出し／読み込み'),h('button',{class:'btn sm',on:{click:()=>go({t:'ver'})}},`v${VERSION}・更新履歴`)))
 }
 function score(qs){return qs.length?Math.round(qs.reduce((a,q)=>a+LV.find(l=>l.f(q)).w,0)/qs.length*100):0}
 function ranges(s){
@@ -316,7 +340,7 @@ function ranges(s){
   a.forEach(x=>{const k=Math.floor(x.u/10);if(!b.has(k))b.set(k,[]);b.get(k).push(x.q)});
   return{g,cards:a.map(x=>x.q),blocks:[...b].sort((x,y)=>x[0]-y[0]).map(([k,c])=>({label:`${k*10+1}–${Math.min(k*10+10,mx+1)}${un}`,cards:c}))}})}
 function setView(){
- const s0=cur();if(!s0)return home();const s={...s0,qs:s0.qs.filter(q=>!q.off)},nOff=s0.qs.length-s.qs.length;
+ const s0=cur();if(!s0)return home();const s={...s0,qs:s0.qs.filter(q=>!q.off)},nOff=s0.qs.length-s.qs.length,sn=(D.sess||{})[s0.id];
  const run=c=>startSession(s,c);
  const NS=[10,20,50,100,0];
  const nrow=h('div',{class:'card'},h('div',{class:'lb'},'1回の問題数（間違えた問題は数問後にもう一度出ます。その回数も含みます）'),h('div',{class:'row'},NS.map(n=>h('button',{class:'btn sm'+((D.n||0)===n?' pri':''),on:{click(){D.n=n;save();render()}}},n?n+'問':'全部')),h('input',{type:'number',min:1,placeholder:'その他',value:NS.includes(D.n||0)?'':D.n,style:'flex:1;min-width:90px',on:{change(e){const v=parseInt(e.target.value);D.n=v>0?v:0;save();render()}}})));
@@ -326,8 +350,9 @@ function setView(){
   return r.g?h('details',{class:'item',style:'display:block'},h('summary',{style:'cursor:pointer'},`${r.g}　${r.cards.length}問・理解度 ${score(r.cards)}%`),h('div',{class:'row'},h('button',{class:'btn sm',on:{click:()=>run(r.cards)}},'この回を出題')),bl):bl};
  return h('div',{},h('button',{class:'btn sm',on:{click:()=>go({t:'home'})}},'← 戻る'),h('h1',{},s.name),
   nOff?h('div',{class:'mu',style:'margin-bottom:8px'},`※ ${nOff}問は「出題しない」設定です（編集画面の問題一覧で変更）`):'',
+  sn?h('div',{class:'row'},h('button',{class:'btn ok',on:{click:()=>resumeSession(s0)}},`▶ 前回の続きから（${sn.i}回目まで）`)):'',
   s.qs.length?nrow:'',
-  s.qs.length?h('div',{class:'row'},h('button',{class:'btn pri',on:{click:()=>run(s.qs)}},`スタート（全${s.qs.length}問から）`),h('button',{class:'btn',on:{click:()=>run(weak(s))}},`苦手・未学習（${weak(s).length}）`)):h('p',{class:'mu'},nOff?'出題する問題がありません。編集画面の問題一覧でチェックを入れてください。':'まだ問題がありません。下のボタンから追加してください。'),
+  s.qs.length?h('div',{class:'row'},h('button',{class:'btn pri',on:{click:()=>run(s.qs)}},`スタート（全${s.qs.length}問から）`),h('button',{class:'btn',on:{click:()=>run(weak(s))}},`要復習（${weak(s).length}）`)):h('p',{class:'mu'},nOff?'出題する問題がありません。編集画面の問題一覧でチェックを入れてください。':'まだ問題がありません。下のボタンから追加してください。'),
   pie(s),
   many?h('div',{class:'card'},h('h2',{},'範囲を選んで出題'),h('div',{class:'lb'},'ボタンの数字はその範囲の理解度です。10問（10文）ずつに区切っています。'),R.map(box)):'',
   h('div',{class:'row'},h('button',{class:'btn',on:{click:()=>go({t:'edit',id:s.id})}},s.file?'📋 問題一覧・書き出し':'✏️ 問題を追加・編集')))
@@ -421,7 +446,7 @@ function canvasInit(cv){const r=cv.getBoundingClientRect(),d=window.devicePixelR
 function startSession(s,cards){
  let p=cards.slice();if(!p.length)return false;
  for(let i=p.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[p[i],p[j]]=[p[j],p[i]]}
- const N=D.n>0?D.n:Infinity;if(p.length>N)p=p.sort((a,b)=>a.box-b.box).slice(0,N);
+ const N=D.n>0?D.n:Infinity;if(p.length>N)p=p.sort((a,b)=>eb(a)-eb(b)).slice(0,N);
  S={id:s.id,pool:p,i:0,N,ok:0,ng:0,seen:new Set(),retry:[],cur:null};advance();go({t:'study'});return true}
 function advance(){
  if(S.i>=S.N)return false;
@@ -432,10 +457,10 @@ function advance(){
  return false}
 function answer(ok){
  const q=S.cur,first=!S.seen.has(q.id);S.seen.add(q.id);
- if(ok){q.r++;q.box=Math.min(q.box+1,5)}else{q.w++;q.box=0}if(first){ok?S.ok++:S.ng++}save()
+ if(ok){q.r++;q.box=Math.min(q.box+1,5)}else{q.w++;q.box=0}if(first){ok?S.ok++:S.ng++}D.tick=(D.tick||0)+1;q.at=D.tick;save()
  S.retry=S.retry.filter(x=>x.q!==q);S.i++;
  if(!ok)S.retry.push({q,due:S.i+2+Math.floor(Math.random()*3)});
- return advance()}
+ const more=advance();if(more)saveSess();else{if(D.sess)delete D.sess[S.id];save()}return more}
 function study(){
  const s=D.sets.find(z=>z.id===S.id),q=S.cur;
  const cv=h('canvas',{class:'cv'});let c,er=false,cur=null;const strokes=[];
@@ -461,7 +486,7 @@ function study(){
  const init=()=>{c=canvasInit(cv);redraw()};
  if(window.ResizeObserver)new ResizeObserver(init).observe(cv);else requestAnimationFrame(init);
  const left=S.pool.length+S.retry.length+(S.retry.some(x=>x.q===q)?0:1),tot=Math.min(S.N,S.i+left),isR=S.seen.has(q.id);
- return h('div',{},h('div',{class:'row'},h('button',{class:'btn sm',on:{click:()=>go({t:'set',id:S.id})}},'← やめる'),h('div',{class:'mu',style:'text-align:right'},`${S.i+1} / ${tot}${isR?'（復習）':''}`)),
+ return h('div',{},h('div',{class:'row'},h('button',{class:'btn sm',on:{click:()=>{saveSess();go({t:'set',id:S.id})}}},'← やめる（保存）'),h('div',{class:'mu',style:'text-align:right'},`${S.i+1} / ${tot}${isR?'（復習）':''}`)),
   h('div',{class:'bar'},h('i',{style:`width:${S.i/tot*100}%`})),
   h('div',{class:'card'},h('div',{class:'lb'},s.name),h('div',{class:'big'},fmt(q.q))),
   cv,h('div',{class:'row'},h('button',{class:'btn sm',on:{click:undo}},'↩ 元に戻す'),erb,h('button',{class:'btn sm',on:{click:clr}},'全消し')),
@@ -469,7 +494,7 @@ function study(){
 }
 function done(){
  const s=D.sets.find(z=>z.id===S.id),n=S.ok+S.ng;
- const again=h('button',{class:'btn pri',on:{click(){const p=weak(s);if(!p.length)return go({t:'set',id:s.id});startSession(s,p)}}},'苦手だけもう一度');
+ const again=h('button',{class:'btn pri',on:{click(){const p=weak(s);if(!p.length)return go({t:'set',id:s.id});startSession(s,p)}}},'要復習をもう一度');
  return h('div',{},h('h1',{},'おつかれさま 🎉'),h('div',{class:'card'},h('div',{class:'big'},`${S.ok} / ${n} 問 正解`),h('div',{class:'mu'},`正答率 ${n?Math.round(S.ok/n*100):0}%・出題 ${S.i}回（復習を含む）`)),pie(s),
   h('div',{class:'row'},again,h('button',{class:'btn',on:{click:()=>go({t:'set',id:s.id})}},'問題集に戻る')))
 }
